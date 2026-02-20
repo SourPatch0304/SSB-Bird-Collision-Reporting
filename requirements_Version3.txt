@@ -1,0 +1,6 @@
+flask
+twilio
+Pillow
+piexif
+geohash2
+requests
