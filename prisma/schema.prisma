@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TriageStatus {
+  NEW
+  WAITING_FOR_ANSWERS
+  COMPLETE
+}
+
+enum ObservedAtSource {
+  EXIF
+  MESSAGE_RECEIVED
+}
+
+enum QuestionType {
+  YES_NO
+  MULTICHOICE
+  FREE_TEXT
+}
+
+enum ConversationFlowState {
+  IDLE
+  ASKING
+  DONE
+}
+
+model Report {
+  id                      String           @id @default(cuid())
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+  phoneNumber             String
+  messageBody             String
+  locationText            String?
+  city                    String?
+  state                   String?
+  triageStatus            TriageStatus     @default(NEW)
+  llmSummary              String?
+  suspectedCause          String?
+  buildingCollisionLikely Boolean?
+  observedAt              DateTime
+  observedAtSource        ObservedAtSource
+  receivedAt              DateTime
+  exifCapturedAt          DateTime?
+  lat                     Float?
+  lng                     Float?
+  geohash                 String?
+
+  media                   Media[]
+  questions               Question[]
+  answers                 Answer[]
+  conversations           ConversationState[]
+
+  @@index([phoneNumber, createdAt])
+  @@index([triageStatus])
+}
+
+model Media {
+  id             String    @id @default(cuid())
+  reportId       String
+  twilioMediaSid String?
+  contentType    String
+  originalUrl    String
+  storedPath     String
+  bytes          Int
+  createdAt      DateTime  @default(now())
+  exifJson       Json?
+  exifMake       String?
+  exifModel      String?
+  exifLat        Float?
+  exifLng        Float?
+  exifCapturedAt DateTime?
+
+  report         Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+}
+
+model Question {
+  id        String       @id @default(cuid())
+  reportId  String
+  text      String
+  type      QuestionType
+  choices   Json?
+  createdAt DateTime     @default(now())
+  order     Int
+
+  report    Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  answers   Answer[]
+
+  @@index([reportId, order])
+}
+
+model Answer {
+  id         String    @id @default(cuid())
+  reportId   String
+  questionId String
+  valueText  String
+  createdAt  DateTime  @default(now())
+
+  report     Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  question   Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([questionId])
+}
+
+model ConversationState {
+  phoneNumber          String                @id
+  currentReportId      String
+  currentQuestionOrder Int                   @default(0)
+  state                ConversationFlowState @default(IDLE)
+  lastInboundAt        DateTime
+  updatedAt            DateTime              @updatedAt
+
+  report               Report                @relation(fields: [currentReportId], references: [id], onDelete: Cascade)
+
+  @@index([currentReportId])
+}

@@ -1,0 +1,141 @@
+openapi: 3.0.3
+info:
+  title: SSB Bird Collision Reporting API
+  version: 1.0.0
+servers:
+  - url: http://localhost:3000
+paths:
+  /healthz:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+  /webhooks/twilio/inbound:
+    post:
+      summary: Twilio inbound MMS webhook
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                From:
+                  type: string
+                  example: '+15125550123'
+                Body:
+                  type: string
+                  example: Found near downtown Austin
+                NumMedia:
+                  type: string
+                  example: '1'
+                MediaUrl0:
+                  type: string
+                  example: https://api.twilio.com/2010-04-01/Accounts/ACxxx/Messages/MMxxx/Media/MExxx
+                MediaContentType0:
+                  type: string
+                  example: image/jpeg
+      responses:
+        '200':
+          description: TwiML message
+          content:
+            text/xml:
+              schema:
+                type: string
+  /webhooks/twilio/status:
+    post:
+      summary: Twilio message status callback
+      responses:
+        '200':
+          description: logged
+  /reports:
+    get:
+      summary: List reports
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [NEW, WAITING_FOR_ANSWERS, COMPLETE]
+        - in: query
+          name: phoneNumber
+          schema:
+            type: string
+      responses:
+        '200':
+          description: list
+  /reports/{id}:
+    get:
+      summary: Get report by id
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: report with relations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  phoneNumber:
+                    type: string
+                  observedAtSource:
+                    type: string
+                    enum: [EXIF, MESSAGE_RECEIVED]
+                  media:
+                    type: array
+                    items:
+                      type: object
+                  questions:
+                    type: array
+                    items:
+                      type: object
+                  answers:
+                    type: array
+                    items:
+                      type: object
+  /reports/{id}/answers:
+    post:
+      summary: Submit answer batch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      questionId:
+                        type: string
+                      valueText:
+                        type: string
+      responses:
+        '201':
+          description: created
+  /admin/reprocess/{id}:
+    post:
+      summary: Re-run triage generation for report
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: force
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: updated report
