@@ -1,10 +1,11 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../adapters/db";
-import { TriageStatus } from "@prisma/client";
 
+// Since we removed the Enums to fix the SQLite JSON/Enum errors, 
+// we will validate the status as a simple string via Zod.
 const querySchema = z.object({
-  status: z.nativeEnum(TriageStatus).optional(),
+  status: z.string().optional(),
   phoneNumber: z.string().optional(),
   fromDate: z.string().datetime().optional(),
   toDate: z.string().datetime().optional(),
@@ -21,24 +22,25 @@ const answersSchema = z.object({
 
 export const reportsRouter = Router();
 
+// 1. GET ALL REPORTS
 reportsRouter.get("/reports", async (req, res, next) => {
   try {
     const parsed = querySchema.parse(req.query);
-    const reports = await prisma.report.findMany({
+    const reports = await prisma.reports.findMany({
       where: {
-        triageStatus: parsed.status,
-        phoneNumber: parsed.phoneNumber,
-        createdAt:
+        status: parsed.status, // Match lowercase column 'status'
+        sender_hash: parsed.phoneNumber, // Match 'sender_hash'
+        created_at:
           parsed.fromDate || parsed.toDate
             ? {
-                gte: parsed.fromDate ? new Date(parsed.fromDate) : undefined,
-                lte: parsed.toDate ? new Date(parsed.toDate) : undefined,
+                gte: parsed.fromDate, // SQLite handles dates as strings
+                lte: parsed.toDate,
               }
             : undefined,
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: { created_at: "desc" },
       include: {
-        media: true,
+        images: true, // Table name is now 'images', not 'media'
       },
     });
 
@@ -48,14 +50,15 @@ reportsRouter.get("/reports", async (req, res, next) => {
   }
 });
 
+// 2. GET SINGLE REPORT BY ID
 reportsRouter.get("/reports/:id", async (req, res, next) => {
   try {
-    const report = await prisma.report.findUnique({
-      where: { id: req.params.id },
+    const report = await prisma.reports.findUnique({
+      where: { report_id: req.params.id }, // Column is 'report_id'
       include: {
-        media: true,
-        questions: { orderBy: { order: "asc" } },
-        answers: { orderBy: { createdAt: "asc" } },
+        images: true,
+        chatbot_interactions: { orderBy: { created_at: "asc" } },
+        followup_answers: { orderBy: { created_at: "asc" } },
       },
     });
 
@@ -70,20 +73,26 @@ reportsRouter.get("/reports/:id", async (req, res, next) => {
   }
 });
 
+// 3. POST ANSWERS TO A REPORT
 reportsRouter.post("/reports/:id/answers", async (req, res, next) => {
   try {
     const body = answersSchema.parse(req.body);
-    const report = await prisma.report.findUnique({ where: { id: req.params.id } });
+    const report = await prisma.reports.findUnique({ 
+      where: { report_id: req.params.id } 
+    });
+    
     if (!report) {
       res.status(404).json({ error: "Report not found" });
       return;
     }
 
-    await prisma.answer.createMany({
+    // Table is now 'followup_answers', not 'answer'
+    await prisma.followup_answers.createMany({
       data: body.answers.map((a) => ({
-        reportId: req.params.id,
-        questionId: a.questionId,
-        valueText: a.valueText,
+        answer_id: crypto.randomUUID(), // SQLite often needs a generated ID for creates
+        report_id: req.params.id,
+        question_type: a.questionId, // Mapping questionId to question_type
+        answer_text: a.valueText,    // Mapping valueText to answer_text
       })),
     });
 

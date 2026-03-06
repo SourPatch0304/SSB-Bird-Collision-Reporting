@@ -1,124 +1,100 @@
 generator client {
-  provider = "prisma-client-js"
+provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+provider = "sqlite"
+url      = env("DATABASE_URL")
 }
 
-enum TriageStatus {
-  NEW
-  WAITING_FOR_ANSWERS
-  COMPLETE
+model reports {
+report_id            String   @id
+sender_hash          String
+thread_id            String
+status               String?  @default("new")
+observed_at          String?
+message_receipt_time String
+exif_capture_time    String?
+time_source          String?
+created_at           String?  @default(dbgenerated("CURRENT_TIMESTAMP"))
+
+chatbot_interactions chatbot_interactions[]
+followup_answers     followup_answers[]
+images               images[]
 }
 
-enum ObservedAtSource {
-  EXIF
-  MESSAGE_RECEIVED
+model images {
+image_id      String   @id
+report_id     String
+file_path     String
+file_size     Int?
+file_type     String?
+upload_order  Int?
+created_at    String?  @default(dbgenerated("CURRENT_TIMESTAMP"))
+
+reports         reports           @relation(fields: [report_id], references: [report_id], onDelete: NoAction, onUpdate: NoAction)
+exif_data       exif_data?
+vision_analysis vision_analysis[]
 }
 
-enum QuestionType {
-  YES_NO
-  MULTICHOICE
-  FREE_TEXT
+model exif_data {
+image_id       String   @id
+gps_latitude   Float?
+gps_longitude  Float?
+gps_accuracy_m Float?
+geohash        String?
+device_make    String?
+device_model   String?
+orientation    Int?
+capture_time   String?
+all_exif_data  String?
+
+images         images   @relation(fields: [image_id], references: [image_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-enum ConversationFlowState {
-  IDLE
-  ASKING
-  DONE
+model chatbot_interactions {
+interaction_id   String   @id
+report_id        String
+interaction_type String?
+message_text     String?
+is_from_user     Boolean? @default(false)
+created_at       String?  @default(dbgenerated("CURRENT_TIMESTAMP"))
+
+reports          reports  @relation(fields: [report_id], references: [report_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model Report {
-  id                      String           @id @default(cuid())
-  createdAt               DateTime         @default(now())
-  updatedAt               DateTime         @updatedAt
-  phoneNumber             String
-  messageBody             String
-  locationText            String?
-  city                    String?
-  state                   String?
-  triageStatus            TriageStatus     @default(NEW)
-  llmSummary              String?
-  suspectedCause          String?
-  buildingCollisionLikely Boolean?
-  observedAt              DateTime
-  observedAtSource        ObservedAtSource
-  receivedAt              DateTime
-  exifCapturedAt          DateTime?
-  lat                     Float?
-  lng                     Float?
-  geohash                 String?
+model vision_analysis {
+analysis_id            String   @id
+image_id               String
+taxon_hint             String?
+confidence_score       Float?
+glass_context_detected Boolean?
+quality_issues         String?
+analysis_data          String?
 
-  media                   Media[]
-  questions               Question[]
-  answers                 Answer[]
-  conversations           ConversationState[]
+created_at             String?  @default(dbgenerated("CURRENT_TIMESTAMP"))
 
-  @@index([phoneNumber, createdAt])
-  @@index([triageStatus])
+images                 images   @relation(fields: [image_id], references: [image_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model Media {
-  id             String    @id @default(cuid())
-  reportId       String
-  twilioMediaSid String?
-  contentType    String
-  originalUrl    String
-  storedPath     String
-  bytes          Int
-  createdAt      DateTime  @default(now())
-  exifJson       Json?
-  exifMake       String?
-  exifModel      String?
-  exifLat        Float?
-  exifLng        Float?
-  exifCapturedAt DateTime?
+model followup_answers {
+answer_id        String   @id
+report_id        String
+question_type    String?
+answer_text      String?
+geocoded_address String?
+geocoded_lat     Float?
+geocoded_lng     Float?
+created_at       String?  @default(dbgenerated("CURRENT_TIMESTAMP"))
 
-  report         Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
-
-  @@index([reportId])
+reports          reports  @relation(fields: [report_id], references: [report_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model Question {
-  id        String       @id @default(cuid())
-  reportId  String
-  text      String
-  type      QuestionType
-  choices   Json?
-  createdAt DateTime     @default(now())
-  order     Int
+model audit_log {
+log_id     String   @id
+report_id  String?
+action     String
+details    String?
 
-  report    Report       @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  answers   Answer[]
-
-  @@index([reportId, order])
-}
-
-model Answer {
-  id         String    @id @default(cuid())
-  reportId   String
-  questionId String
-  valueText  String
-  createdAt  DateTime  @default(now())
-
-  report     Report    @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  question   Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
-
-  @@index([reportId])
-  @@index([questionId])
-}
-
-model ConversationState {
-  phoneNumber          String                @id
-  currentReportId      String
-  currentQuestionOrder Int                   @default(0)
-  state                ConversationFlowState @default(IDLE)
-  lastInboundAt        DateTime
-  updatedAt            DateTime              @updatedAt
-
-  report               Report                @relation(fields: [currentReportId], references: [id], onDelete: Cascade)
-
-  @@index([currentReportId])
+created_at String?  @default(dbgenerated("CURRENT_TIMESTAMP"))
 }
